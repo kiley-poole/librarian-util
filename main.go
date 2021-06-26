@@ -2,21 +2,18 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
-
-type Document struct {
-	Id       int    `json:"id"`
-	Filename string `json:"filename"`
-	Filesize string `json:"filesize"`
-}
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
@@ -33,32 +30,63 @@ func main() {
 	for _, f := range files {
 		wg.Add(1)
 		go func(f fs.DirEntry) {
-			contents, _ := os.Open(dirName + "/" + f.Name())
-			res, err := postDocument(*contents)
+			path := dirName + "/" + f.Name()
+			uri := "http://localhost/api/files"
 
+			request, err := createFormRequest(uri, "file", path)
 			if err != nil {
 				log.Print(err)
 				return
 			}
 
-			fmt.Println(res)
+			client := &http.Client{}
+			resp, err := client.Do(request)
+			if err != nil {
+				log.Print(err)
+				return
+			} else {
+				body := &bytes.Buffer{}
+				_, err := body.ReadFrom(resp.Body)
+				if err != nil {
+					log.Print(err)
+					return
+				}
+				resp.Body.Close()
+				fmt.Println(resp.StatusCode)
+				fmt.Println(resp.Header)
+				fmt.Println(body)
+			}
+
 			wg.Done()
 		}(f)
 	}
 	wg.Wait()
 }
 
-func postDocument(documentIso os.File) (result string, err error) {
-	documentIso.Close()
-	res, err := http.Get("https://librarian-api.navsnow.com/health-check")
+// From: https://matt.aimonetti.net/posts/2013-07-golang-multipart-file-upload-example/
+func createFormRequest(uri string, paramName string, filePath string) (*http.Request, error) {
+	file, err := os.Open(filePath)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	response, err := io.ReadAll(res.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-	result = string(response)
+	defer file.Close()
 
-	return result, err
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile(paramName, filepath.Base(filePath))
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = io.Copy(part, file)
+
+	err = writer.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", uri, body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+	return req, err
 }
