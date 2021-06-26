@@ -20,6 +20,11 @@ func main() {
 	fmt.Print("Enter the directory containing the ISO files: ")
 	dirName, _ := reader.ReadString('\n')
 	dirName = strings.Replace(dirName, "\n", "", -1)
+
+	fmt.Print("Enter the document type uploading: ")
+	docType, _ := reader.ReadString('\n')
+	docType = strings.Replace(docType, "\n", "", -1)
+
 	wg := sync.WaitGroup{}
 
 	files, err := os.ReadDir(dirName)
@@ -33,7 +38,7 @@ func main() {
 			path := dirName + "/" + f.Name()
 			uri := "http://localhost/api/files"
 
-			request, err := createFormRequest(uri, "file", path)
+			request, err := createFormRequest(uri, path, docType)
 			if err != nil {
 				log.Print(err)
 				return
@@ -52,8 +57,7 @@ func main() {
 					return
 				}
 				resp.Body.Close()
-				fmt.Println(resp.StatusCode)
-				fmt.Println(resp.Header)
+
 				fmt.Println(body)
 			}
 
@@ -64,7 +68,7 @@ func main() {
 }
 
 // From: https://matt.aimonetti.net/posts/2013-07-golang-multipart-file-upload-example/
-func createFormRequest(uri string, paramName string, filePath string) (*http.Request, error) {
+func createFormRequest(uri string, filePath string, docType string) (*http.Request, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -73,12 +77,13 @@ func createFormRequest(uri string, paramName string, filePath string) (*http.Req
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile(paramName, filepath.Base(filePath))
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = io.Copy(part, file)
+	_, _ = io.Copy(part, file)
+	_ = writer.WriteField("type", docType)
 
 	err = writer.Close()
 	if err != nil {
