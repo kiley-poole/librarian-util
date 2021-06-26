@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -33,19 +34,31 @@ func main() {
 		wg.Add(1)
 		go func(f fs.DirEntry) {
 			contents, _ := os.Open(dirName + "/" + f.Name())
-			document, err := postDocument(*contents)
+			res, err := postDocument(*contents)
 
 			if err != nil {
 				log.Print(err)
 				return
 			}
-			fmt.Println(document)
+
+			fmt.Println(res)
 			wg.Done()
 		}(f)
 	}
+	wg.Wait()
 }
 
-func postDocument(documentIso os.File) (document Document, err error) {
+func postDocument(documentIso os.File) (result string, err error) {
 	documentIso.Close()
-	response, err := http.Post("localhost:8080/api/document", "multipart/form", documentIso)
+	res, err := http.Get("https://librarian-api.navsnow.com/health-check")
+	if err != nil {
+		log.Fatal(err)
+	}
+	response, err := io.ReadAll(res.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	result = string(response)
+
+	return result, err
 }
